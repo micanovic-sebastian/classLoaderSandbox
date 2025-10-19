@@ -31,7 +31,7 @@ if (-not (Test-Path "pom.xml")) {
 }
 
 # --- Variables ---
-$userCodeDir = "target/user-code"
+$userCodeDir = "target/test-classes"
 $userCodeSource = "src/test/java/UserApp.java"
 $jarName = "java-sandbox-1.0.0.jar"
 $jarPath = "target/$jarName"
@@ -59,3 +59,4 @@ Write-Host "-------------------- SANDBOX OUTPUT START --------------------"
 Write-Host "--------------------  SANDBOX OUTPUT END  --------------------`n"
 
 Write-Host "Script finished successfully." -ForegroundColor Cyan
+

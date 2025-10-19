@@ -11,12 +11,12 @@
     "java.lang.Process",
     "java.lang.ProcessBuilder",
     "java.lang.Runtime",
-    "java.lang.System",
-    "java.lang.reflect.Method",
-    "java.lang.reflect.Field",
-    "java.lang.reflect.Constructor",
     "java.lang.ClassLoader",
     "java.net.URLClassLoader",
-    "java.sql.DriverManager"
+    "java.sql.DriverManager",
+    "java.lang.reflect.Proxy"
+  ],
+  "blockedPackages": [
+    "java.lang.reflect"
   ]
 }

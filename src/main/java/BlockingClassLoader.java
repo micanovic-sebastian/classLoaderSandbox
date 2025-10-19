@@ -14,12 +14,13 @@ import java.util.Set;
 import java.util.stream.Stream;
 
 /**
- * A custom ClassLoader that blocks specified classes and loads
+ * A custom ClassLoader that blocks specified classes/packages and loads
  * user-provided code from a separate directory.
  */
 public class BlockingClassLoader extends ClassLoader {
 
     private final Set<String> blockedClasses = new HashSet<>();
+    private final Set<String> blockedPackages = new HashSet<>();
     private final Map<String, byte[]> userClasses = new HashMap<>();
 
     public BlockingClassLoader(ClassLoader parent, String userCodePath, String configPath) {
@@ -28,22 +29,39 @@ public class BlockingClassLoader extends ClassLoader {
         loadUserClasses(userCodePath);
     }
 
+    /**
+     * Loads security rules from the specified JSON config file.
+     * Now reads both "blockedClasses" and "blockedPackages".
+     */
     private void loadConfig(String configFilePath) {
         try (InputStream is = Files.newInputStream(Paths.get(configFilePath))) {
             JSONTokener tokener = new JSONTokener(is);
             JSONObject config = new JSONObject(tokener);
-            JSONArray blocked = config.getJSONArray("blockedClasses");
 
-            for (int i = 0; i < blocked.length(); i++) {
-                String className = blocked.getString(i);
-                blockedClasses.add(className);
+            if (config.has("blockedClasses")) {
+                JSONArray blocked = config.getJSONArray("blockedClasses");
+                for (int i = 0; i < blocked.length(); i++) {
+                    blockedClasses.add(blocked.getString(i));
+                }
             }
-            System.out.println("[ClassLoader] Loaded " + blockedClasses.size() + " blocked class rules from " + configFilePath);
+
+            if (config.has("blockedPackages")) {
+                JSONArray blocked = config.getJSONArray("blockedPackages");
+                for (int i = 0; i < blocked.length(); i++) {
+                    blockedPackages.add(blocked.getString(i));
+                }
+            }
+
+            System.out.println("[ClassLoader] Loaded " + blockedClasses.size() + " blocked classes and "
+                             + blockedPackages.size() + " blocked packages from " + configFilePath);
         } catch (Exception e) {
             System.err.println("[ClassLoader] WARNING: Could not load config file '" + configFilePath + "'. No classes will be blocked.");
         }
     }
 
+    /**
+     * Scans the user code directory and loads all .class files into memory.
+     */
     private void loadUserClasses(String userCodePath) {
         Path startPath = Paths.get(userCodePath);
         try (Stream<Path> stream = Files.walk(startPath)) {
@@ -65,6 +83,21 @@ public class BlockingClassLoader extends ClassLoader {
         }
     }
 
+    /**
+     * Checks if a class name is explicitly blocked or belongs to a blocked package.
+     */
+    private boolean isBlocked(String name) {
+        if (blockedClasses.contains(name)) {
+            return true;
+        }
+        for (String pkg : blockedPackages) {
+            if (name.startsWith(pkg + ".")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     @Override
     protected Class<?> findClass(String name) throws ClassNotFoundException {
         if (userClasses.containsKey(name)) {
@@ -78,14 +111,12 @@ public class BlockingClassLoader extends ClassLoader {
     @Override
     public Class<?> loadClass(String name, boolean resolve) throws ClassNotFoundException {
         // 1. Check blocklist first. This is the primary security boundary.
-        if (blockedClasses.contains(name)) {
+        if (isBlocked(name)) {
             throw new ClassNotFoundException("Access denied! The class '" + name + "' is blocked by security policy.");
         }
 
         // 2. Check if it's one of the classes we are supposed to sandbox.
         if (userClasses.containsKey(name)) {
-            // If it's a user class, we MUST load it with findClass to keep it in the sandbox.
-            // First, check if we've already defined it.
             Class<?> c = findLoadedClass(name);
             if (c == null) {
                 c = findClass(name);
@@ -100,3 +131,4 @@ public class BlockingClassLoader extends ClassLoader {
         return super.loadClass(name, resolve);
     }
 }
+

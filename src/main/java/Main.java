@@ -1,36 +1,56 @@
 import java.lang.reflect.Method;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.Optional;
 
 /**
- * The main entry point. This class is responsible for creating
- * the BlockingClassLoader and running the UserApp within it.
+ * Main entry point for the Sandbox application.
+ * It takes the path to user code and an optional config file as arguments.
  */
 public class Main {
     public static void main(String[] args) throws Exception {
-        System.out.println("[Main] Setting up sandboxed class loader...");
+        if (args.length < 1 || args.length > 2) {
+            System.err.println("Usage: java -jar java-sandbox-1.0.0.jar <path_to_user_code_dir> [path_to_config.json]");
+            System.exit(1);
+        }
 
-        // Define the path to the "untrusted" code
-        String sandboxPath = "bin/user";
+        String userCodePath = args[0];
+        String configPath = (args.length == 2) ? args[1] : "config.json";
 
-        // 1. Create an instance of our custom loader
-        // Pass the parent loader AND the path to the sandboxed code.
+        System.out.println("[Main] Starting Sandbox...");
+        System.out.println("[Main] User Code Path: " + userCodePath);
+        System.out.println("[Main] Security Config: " + configPath);
+
+        // 1. Create the custom class loader
         BlockingClassLoader customLoader = new BlockingClassLoader(
             ClassLoader.getSystemClassLoader(),
-            sandboxPath
+            userCodePath,
+            configPath
         );
 
-        // 2. Load the "untrusted" UserApp class using our loader
-        // This will now trigger our overriden loadClass/findClass logic.
-        Class<?> userAppClass = customLoader.loadClass("UserApp");
+        // 2. Find the main class in the user's code.
+        // We will assume the main class is named "UserApp".
+        String mainClassName = "UserApp";
 
-        // 3. Create an instance of UserApp (now running in the sandbox)
-        Object userAppInstance = userAppClass.getDeclaredConstructor().newInstance();
+        // 3. Load, instantiate, and run the user's main class
+        try {
+            Class<?> userAppClass = customLoader.loadClass(mainClassName);
+            Object userAppInstance = userAppClass.getDeclaredConstructor().newInstance();
+            Method runMethod = userAppClass.getMethod("run");
 
-        // 4. Find its "run" method and invoke it
-        Method runMethod = userAppClass.getMethod("run");
-        
-        System.out.println("[Main] Executing UserApp.run() inside the sandbox...");
-        runMethod.invoke(userAppInstance);
+            System.out.println("\n[Main] --- Executing user code inside sandbox ---");
+            runMethod.invoke(userAppInstance);
+            System.out.println("[Main] --- User code execution finished ---\n");
 
-        System.out.println("[Main] Execution complete.");
+        } catch (ClassNotFoundException e) {
+            System.err.println("[Main] ERROR: Could not find main class '" + mainClassName + "' in the provided path.");
+            System.exit(1);
+        } catch (Exception e) {
+            System.err.println("[Main] An error occurred while running the user application.");
+            e.printStackTrace();
+        }
+
+        System.out.println("[Main] Sandbox execution complete.");
     }
 }

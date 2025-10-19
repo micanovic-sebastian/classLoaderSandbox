@@ -1,109 +1,102 @@
+import org.json.JSONArray;
+import org.json.JSONObject;
+import org.json.JSONTokener;
+
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
 /**
- * A custom ClassLoader that blocks access to specific classes
- * defined in a config.json file.
- *
- * This version is modified to explicitly load 'UserApp' from a
- * specified directory, forcing it into the sandbox.
+ * A custom ClassLoader that blocks specified classes and loads
+ * user-provided code from a separate directory.
  */
 public class BlockingClassLoader extends ClassLoader {
 
     private final Set<String> blockedClasses = new HashSet<>();
-    private final Path sandboxDir; // Path to the sandboxed code (e.g., "bin/user")
+    private final Map<String, byte[]> userClasses = new HashMap<>();
 
-    /**
-     * Constructor now takes the path to the sandboxed directory.
-     * @param parent The parent classloader.
-     * @param sandboxDir The directory containing the .class files to sandbox.
-     */
-    public BlockingClassLoader(ClassLoader parent, String sandboxDir) {
+    public BlockingClassLoader(ClassLoader parent, String userCodePath, String configPath) {
         super(parent);
-        this.sandboxDir = Paths.get(sandboxDir);
-        loadConfig("config.json");
+        loadConfig(configPath);
+        loadUserClasses(userCodePath);
     }
 
-    /**
-     * Reads and parses the config.json file to populate the blocklist.
-     */
     private void loadConfig(String configFilePath) {
-        try {
-            String content = new String(Files.readAllBytes(Paths.get(configFilePath)));
+        try (InputStream is = Files.newInputStream(Paths.get(configFilePath))) {
+            JSONTokener tokener = new JSONTokener(is);
+            JSONObject config = new JSONObject(tokener);
+            JSONArray blocked = config.getJSONArray("blockedClasses");
 
-            Pattern p = Pattern.compile("\"blockedClasses\"\\s*:\\s*\\[([^\\]]+)\\]");
-            Matcher m = p.matcher(content);
-
-            if (m.find()) {
-                String arrayContents = m.group(1);
-                Pattern stringPattern = Pattern.compile("\"(.*?)\"");
-                Matcher stringMatcher = stringPattern.matcher(arrayContents);
-                while (stringMatcher.find()) {
-                    String className = stringMatcher.group(1);
-                    blockedClasses.add(className);
-                    System.out.println("[ClassLoader] Blocking: " + className);
-                }
+            for (int i = 0; i < blocked.length(); i++) {
+                String className = blocked.getString(i);
+                blockedClasses.add(className);
             }
-            System.out.println("[ClassLoader] " + blockedClasses.size() + " classes will be blocked.");
-
-        } catch (IOException e) {
-            System.err.println("[ClassLoader] WARNING: Could not load config.json. No classes will be blocked.");
-            e.printStackTrace();
+            System.out.println("[ClassLoader] Loaded " + blockedClasses.size() + " blocked class rules from " + configFilePath);
+        } catch (Exception e) {
+            System.err.println("[ClassLoader] WARNING: Could not load config file '" + configFilePath + "'. No classes will be blocked.");
         }
     }
 
-    @Override
-    public Class<?> loadClass(String name) throws ClassNotFoundException {
-        // 1. Check if the class is on the blocklist *FIRST*.
-        if (blockedClasses.contains(name)) {
-            // This is the check that will now block java.io.File
-            throw new ClassNotFoundException("Access denied! The class '" + name + "' is blocked by policy.");
+    private void loadUserClasses(String userCodePath) {
+        Path startPath = Paths.get(userCodePath);
+        try (Stream<Path> stream = Files.walk(startPath)) {
+            stream.filter(path -> path.toString().endsWith(".class"))
+                  .forEach(classFile -> {
+                      try {
+                          String className = startPath.relativize(classFile).toString()
+                                                      .replace(".class", "")
+                                                      .replace(java.io.File.separatorChar, '.');
+                          byte[] classBytes = Files.readAllBytes(classFile);
+                          userClasses.put(className, classBytes);
+                          System.out.println("[ClassLoader] Discovered user class: " + className);
+                      } catch (IOException e) {
+                          System.err.println("[ClassLoader] Failed to load class file: " + classFile);
+                      }
+                  });
+        } catch (IOException e) {
+            System.err.println("[ClassLoader] ERROR: Could not read user code from directory: " + userCodePath);
         }
-
-        // 2. Check if it is the "UserApp" class.
-        // We *must* load this class ourselves, not delegate to the parent.
-        if (name.equals("UserApp")) {
-            // Check if we've already loaded it
-            Class<?> c = findLoadedClass(name);
-            if (c != null) {
-                return c;
-            }
-            // Not loaded, so load it ourselves using findClass()
-            return findClass(name);
-        }
-
-        // 3. For all other classes (like java.util.ArrayList, etc.),
-        // delegate to the parent loader as usual.
-        return super.loadClass(name);
     }
 
     @Override
     protected Class<?> findClass(String name) throws ClassNotFoundException {
-        // This method is called by loadClass when it needs to load a class itself.
-        // We only expect 'UserApp' to be loaded this way.
-        if (!name.equals("UserApp")) {
-            return super.findClass(name);
-        }
-
-        try {
-            // Convert class name to file path: UserApp -> UserApp.class
-            Path classFile = sandboxDir.resolve(name + ".class");
-
-            System.out.println("[ClassLoader] Finding and loading class from sandbox: " + classFile);
-
-            byte[] classBytes = Files.readAllBytes(classFile);
-
-            // Define the class from its bytes
+        if (userClasses.containsKey(name)) {
+            byte[] classBytes = userClasses.get(name);
+            System.out.println("[ClassLoader] Defining sandboxed class: " + name);
             return defineClass(name, classBytes, 0, classBytes.length);
-
-        } catch (IOException e) {
-            throw new ClassNotFoundException("Could not find or load class " + name, e);
         }
+        return super.findClass(name);
+    }
+
+    @Override
+    public Class<?> loadClass(String name, boolean resolve) throws ClassNotFoundException {
+        // 1. Check blocklist first. This is the primary security boundary.
+        if (blockedClasses.contains(name)) {
+            throw new ClassNotFoundException("Access denied! The class '" + name + "' is blocked by security policy.");
+        }
+
+        // 2. Check if it's one of the classes we are supposed to sandbox.
+        if (userClasses.containsKey(name)) {
+            // If it's a user class, we MUST load it with findClass to keep it in the sandbox.
+            // First, check if we've already defined it.
+            Class<?> c = findLoadedClass(name);
+            if (c == null) {
+                c = findClass(name);
+            }
+            if (resolve) {
+                resolveClass(c);
+            }
+            return c;
+        }
+
+        // 3. For all other classes (e.g., java.util.ArrayList), delegate to the parent.
+        return super.loadClass(name, resolve);
     }
 }

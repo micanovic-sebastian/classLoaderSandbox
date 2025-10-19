@@ -3,8 +3,20 @@
     "java.io.File",
     "java.io.FileReader",
     "java.io.FileWriter",
+    "java.io.RandomAccessFile",
     "java.net.Socket",
+    "java.net.ServerSocket",
+    "java.net.URL",
+    "java.net.URLConnection",
+    "java.lang.Process",
     "java.lang.ProcessBuilder",
-    "java.lang.Runtime"
+    "java.lang.Runtime",
+    "java.lang.System",
+    "java.lang.reflect.Method",
+    "java.lang.reflect.Field",
+    "java.lang.reflect.Constructor",
+    "java.lang.ClassLoader",
+    "java.net.URLClassLoader",
+    "java.sql.DriverManager"
   ]
 }

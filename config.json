@@ -1,0 +1,10 @@
+{
+  "blockedClasses": [
+    "java.io.File",
+    "java.io.FileReader",
+    "java.io.FileWriter",
+    "java.net.Socket",
+    "java.lang.ProcessBuilder",
+    "java.lang.Runtime"
+  ]
+}

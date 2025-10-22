@@ -1,1 +1,0 @@
-java -jar target/java-sandbox-1.0.0.jar --pathfrom=path/to/my-user-app.jar --main-class=com.example.MainApp --config=config.json

@@ -54,9 +54,8 @@ if (-not (Test-Path $jarPath)) {
 # 4. Run the final application
 Write-Host "--- Step 3: Running the sandbox application ---" -ForegroundColor Green
 Write-Host "Executing: java -jar $jarPath $userCodeDir`n"
-Write-Host "-------------------- SANDBOX OUTPUT START --------------------"
-& java -jar $jarPath $userCodeDir
-Write-Host "--------------------  SANDBOX OUTPUT END  --------------------`n"
+
+& java -jar $jarPath "--pathfrom=$userCodeDir" --main-class="UserApp" "--config=config.json"
 
 Write-Host "Script finished successfully." -ForegroundColor Cyan
 

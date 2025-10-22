@@ -1,3 +1,10 @@
-# Ausführung
+## Voraussetzungen
+- Java 21
+- IntelliJ
 
-java -jar
+## Installation
+mvn clean package
+
+## Ausführen
+
+java -jar .\target\cclsandbox.jar -pathfrom=target\test-classes --main-class=UserApp --config=config.json

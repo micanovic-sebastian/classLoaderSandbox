@@ -4,7 +4,6 @@
 # Stop the script if any command fails.
 $ErrorActionPreference = "Stop"
 
-# --- Helper Function ---
 # A function to execute a command and print a message. Exits if the command fails.
 function Invoke-Step {
     param(
@@ -32,7 +31,7 @@ if (-not (Test-Path "pom.xml")) {
 
 # --- Variables ---
 $userCodeDir = "target/test-classes"
-$userCodeSource = "src/test/java/UserApp.java"
+$userCodeSource = "src/test/java/TestApp.java" # <-- MODIFIED
 $jarName = "java-sandbox-1.0.0.jar"
 $jarPath = "target/$jarName"
 
@@ -55,7 +54,7 @@ if (-not (Test-Path $jarPath)) {
 Write-Host "--- Step 3: Running the sandbox application ---" -ForegroundColor Green
 Write-Host "Executing: java -jar $jarPath $userCodeDir`n"
 
-java -jar .\target\cclsandbox.jar --pathfrom=C:\Users\basti\Documents\Bachelorarbeit\classLoaderSandbox\src\test\java --main-class=UserApp --config=config.json
+# MODIFIED main-class and removed -- prefixes
+java -jar .\target\cclsandbox.jar pathfrom=C:\Users\basti\Documents\Bachelorarbeit\classLoaderSandbox\src\test\java main-class=TestApp config=config.json
 
 Write-Host "Script finished successfully." -ForegroundColor Cyan
-

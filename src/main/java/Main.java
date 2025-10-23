@@ -25,16 +25,16 @@ public class Main {
     public static void main(String[] args) {
         Map<String, String> params = parseArgs(args);
 
-        if (params.containsKey("--help") || !params.containsKey("--pathfrom") || !params.containsKey("--main-class")) {
+        if (params.containsKey("help") || !params.containsKey("pathfrom") || !params.containsKey("main-class")) {
             printUsage();
             return;
         }
 
-        String pathFrom = params.get("--pathfrom");
-        String mainClassName = params.get("--main-class");
-        String pathFromConfig = params.getOrDefault("--config", "config.json");
+        String pathFrom = params.get("pathfrom");
+        String mainClassName = params.get("main-class");
+        String pathFromConfig = params.getOrDefault("config", "config.json");
         // Default output path is the current working directory
-        String pathFromCompileTo = params.getOrDefault("--pathto", ".");
+        String pathFromCompileTo = params.getOrDefault("pathto", ".");
         String effectiveUserCodePath;
 
         System.out.println("[Main] Starting Sandbox...");
@@ -46,20 +46,36 @@ public class Main {
         boolean isDir = Files.isDirectory(sourcePath);
 
         try {
-            if (isJar) {
+if (isJar) {
                 System.out.println("[Main] Loading from JAR: " + pathFrom);
                 effectiveUserCodePath = pathFrom;
             } else if (isDir) {
-                System.out.println("[Main] Loading from source directory: " + pathFrom);
-                System.out.println("[Main] Compiling to: " + pathFromCompileTo);
-
-                boolean compiled = compileSourceFiles(sourcePath, Paths.get(pathFromCompileTo));
-                if (!compiled) {
-                    System.err.println("[Main] ERROR: Compilation failed. Exiting.");
+                // Check if the directory contains .java files
+                boolean hasJavaFiles;
+                try (Stream<Path> stream = Files.walk(sourcePath)) {
+                    hasJavaFiles = stream.anyMatch(file -> file.toString().endsWith(".java"));
+                } catch (IOException e) {
+                    System.err.println("[Main] ERROR: Could not inspect source directory: " + pathFrom);
                     System.exit(1);
+                    return;
                 }
-                System.out.println("[Main] Compilation successful.");
-                effectiveUserCodePath = pathFromCompileTo;
+
+                if (hasJavaFiles) {
+                    System.out.println("[Main] Loading from source directory: " + pathFrom);
+                    System.out.println("[Main] Compiling to: " + pathFromCompileTo);
+
+                    boolean compiled = compileSourceFiles(sourcePath, Paths.get(pathFromCompileTo));
+                    if (!compiled) {
+                        System.err.println("[Main] ERROR: Compilation failed. Exiting.");
+                        System.exit(1);
+                    }
+                    System.out.println("[Main] Compilation successful.");
+                    effectiveUserCodePath = pathFromCompileTo; // Use compile path
+                } else {
+                    System.out.println("[Main] Loading from pre-compiled directory: " + pathFrom);
+                    // No .java files, assume it's a directory of .class files
+                    effectiveUserCodePath = pathFrom; // Use pathFrom directly
+                }
             } else {
                 System.err.println("[Main] ERROR: --pathfrom is not a valid directory or .jar file: " + pathFrom);
                 System.exit(1);
@@ -167,19 +183,24 @@ public class Main {
         }
     }
 
-    /**
-     * A simple argument parser for --key=value pairs.
-     */
+
     private static Map<String, String> parseArgs(String[] args) {
         Map<String, String> params = new HashMap<>();
         for (String arg : args) {
-            if (arg.equals("--help")) {
-                params.put("--help", "");
+            // Handle help argument (with or without --)
+            if (arg.equals("help") || arg.equals("--help")) {
+                params.put("help", "");
                 continue;
             }
+
             String[] parts = arg.split("=", 2);
-            if (parts.length == 2 && parts[0].startsWith("--")) {
-                params.put(parts[0], parts[1]);
+            if (parts.length == 2) {
+                String key = parts[0];
+                // Remove prefix if it exists
+                if (key.startsWith("--")) {
+                    key = key.substring(2);
+                }
+                params.put(key, parts[1]);
             }
         }
         return params;
@@ -188,11 +209,11 @@ public class Main {
     private static void printUsage() {
         System.err.println("Usage: java -jar cclsandbox.jar [options]");
         System.err.println("Options:");
-        System.err.println("  --pathfrom=<path>     (Required) Path to source .java directory or a user .jar file.");
-        System.err.println("  --main-class=<class>  (Required) Full class name to execute (e.g., com.example.UserApp).");
-        System.err.println("  --pathto=<path>       (Optional) Directory to compile .class files into.");
-        System.err.println("                        (Defaults to current working directory: '.')");
-        System.err.println("  --config=<path>       (Optional) Path to the security config.json file.");
-        System.err.println("                        (Defaults to 'config.json')");
+        System.err.println("  pathfrom=<path>     (Required) Path to source .java directory or a user .jar file.");
+        System.err.println("  main-class=<class>  (Required) Full class name to execute (e.g., com.example.UserApp).");
+        System.err.println("  pathto=<path>       (Optional) Directory to compile .class files into.");
+        System.err.println("                      (Defaults to current working directory: '.')");
+        System.err.println("  config=<path>       (Optional) Path to the security config.json file.");
+        System.err.println("                      (Defaults to 'config.json')");
     }
 }

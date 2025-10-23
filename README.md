@@ -5,6 +5,9 @@
 ## Installation
 mvn clean package
 
-## Ausführen
+## Parameter
+- pathfrom=pfad/zu/java/dateien
+- main-class=pfad/zur/main/klasse
 
-java -jar .\target\cclsandbox.jar -pathfrom=target\test-classes --main-class=UserApp --config=config.json
+## Ausführen
+java -jar .\target\cclsandbox.jar pathfrom=target\test-classes main-class=TestApp config=config.json

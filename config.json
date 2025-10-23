@@ -2,28 +2,37 @@
   "blockedClasses": [
     "java.io.File",
     "java.io.FileReader",
-    "java.nio.file.Files",
     "java.io.FileWriter",
+    "java.io.FileInputStream",
+    "java.io.FileOutputStream",
     "java.io.RandomAccessFile",
+    "java.io.FileDescriptor",
+    "java.nio.file.Files",
+    "java.nio.file.Paths",
+    "java.nio.file.Path",
+    "java.nio.channels.FileChannel",
     "java.net.Socket",
     "java.net.ServerSocket",
     "java.net.URL",
     "java.net.URLConnection",
+    "java.net.HttpURLConnection",
+    "java.net.DatagramSocket",
+    "java.lang.reflect.Method",
+    "java.lang.reflect.Constructor",
+    "java.lang.reflect.AccessibleObject",
+    "java.lang.reflect.Proxy",
+    "java.lang.Runtime",
     "java.lang.Process",
     "java.lang.ProcessBuilder",
-    "java.lang.Runtime",
+    "java.security.Policy",
     "java.net.URLClassLoader",
     "java.sql.DriverManager",
-    "java.lang.reflect.AccessibleObject",
-    "java.lang.reflect.Constructor",
-    "java.lang.reflect.Field",
-    "java.lang.reflect.Method",
-    "java.lang.reflect.Proxy",
-    "javax.crypto.Cipher",
-    "java.awt.Robot"
-
+    "java.sql.Connection",
+    "java.awt.Robot",
+    "sun.misc.Unsafe"
   ],
   "blockedPackages": [
     "java.lang.instrument"
   ]
 }
+

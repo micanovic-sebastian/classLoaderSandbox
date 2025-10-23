@@ -18,7 +18,6 @@ import java.util.stream.Stream;
 /**
  * Main entry point für die Sandbox
  *
- * Akzeptiert Argumente:
  * pathfrom=/path/to/source/or/jar  (Nötig)
  * main-class=com.example.UserApp   (Nötig)
  * pathto=/path/to/compile/output   (Optional Standard ".")
@@ -32,11 +31,9 @@ public class Main {
     public static void main(String[] args) {
         Map<String, String> params = parseArgs(args);
 
-        // --- Logger initialisieren ---
         String logFile = params.getOrDefault("log", "cclsandbox.log");
         // Setzt die Variable für log4j2.xml
         ThreadContext.put("logFile", logFile);
-        // --- Logger initialisiert ---
 
         if (params.containsKey("help") || !params.containsKey("pathfrom") || !params.containsKey("main-class")) {
             printUsage();

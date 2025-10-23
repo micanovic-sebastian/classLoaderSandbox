@@ -136,7 +136,7 @@ public class BlockingClassLoader extends ClassLoader {
     }
 
     /**
-     * Prüft ob eine Klasse blockiert ist (direkt oder per Paket)
+     * Prüft ob eine Klasse blockiert ist (direkt oder per Package)
      */
     private boolean isBlocked(String name) {
         if (blockedClasses.contains(name)) {

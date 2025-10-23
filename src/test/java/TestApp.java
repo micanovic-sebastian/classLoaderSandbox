@@ -1,13 +1,13 @@
 /**
- * das ist die "unsichere" Test-Anwendung die in der Sandbox laufen wird
+ * Das ist die "unsichere" Test-Anwendung die in der Sandbox laufen wird
  *
- * diese Test-Suite versucht Methoden oder Konstruktoren von Klassen zu nutzen
+ * Diese Test-Suite versucht Methoden oder Konstruktoren von Klassen zu nutzen
  * die durch die Sicherheitskonfiguration blockiert sein sollten
  *
- * der Test ist ein Erfolg wenn ein Throwable (zb NoClassDefFoundError
+ * Der Test ist ein Erfolg wenn ein Throwable (zb NoClassDefFoundError
  * ClassNotFoundException oder SecurityException) gefangen wird
  *
- * der Test ist ein Fehler wenn der Code ohne Fehler durchläuft
+ * Der Test ist ein Fehler wenn der Code ohne Fehler durchläuft
  */
 public class TestApp {
 
@@ -15,8 +15,8 @@ public class TestApp {
     private int failCount = 0;
 
     /**
-     * ein simples FunctionalInterface das Code erlaubt
-     * der eine checked Exception werfen könnte
+     * Ein einfaches FunctionalInterface das Code erlaubt
+     * der eine Ausnahme werfen könnte
      */
     @FunctionalInterface
     interface TestOperation {
@@ -48,7 +48,7 @@ public class TestApp {
     public void run() {
         System.out.println("\n[TestApp] Starting Comprehensive Method-Use Test Suite ---");
 
-        // teste eine Klasse die erlaubt sein sollte
+        // teste eine erlaubt Klasse
         System.out.println("\n[TestApp] Testing ALLOWED Class (Should PASS) ---");
         testAllowedMethod("java.util.ArrayList", () -> {
             java.util.List<String> list = new java.util.ArrayList<>();
@@ -59,7 +59,7 @@ public class TestApp {
             }
         });
 
-        // teste Klassen die blockiert sein sollten
+        // teste Klassen nicht erlaubte Klassen
         System.out.println("\n--- [TestApp] Testing BLOCKED Methods (Should all PASS) ---");
 
         testBlockedMethod("java.io.File", () -> {
@@ -175,7 +175,7 @@ public class TestApp {
         });
 
 
-        // finaler Report
+        // Logausgabe
         System.out.println("\n--- [TestApp] Test Suite Finished ---");
         System.out.printf("[TestApp] FINAL REPORT: %d Tests Succeeded, %d Tests Failed\n", successCount, failCount);
     }

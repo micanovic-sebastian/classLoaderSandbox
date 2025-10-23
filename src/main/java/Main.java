@@ -1,3 +1,7 @@
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.ThreadContext;
+
 import javax.tools.JavaCompiler;
 import javax.tools.ToolProvider;
 import java.io.IOException;
@@ -12,18 +16,27 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
- * Main entry point for the Sandbox application.
+ * Main entry point für die Sandbox
  *
- * Supports new argument-based execution:
- * --pathfrom=/path/to/source/or/jar (Required)
- * --main-class=com.example.UserApp   (Required)
- * --pathto=/path/to/compile/output   (Optional, defaults to current dir ".")
- * --config=/path/to/config.json      (Optional, defaults to "config.json")
+ * Akzeptiert Argumente:
+ * pathfrom=/path/to/source/or/jar  (Nötig)
+ * main-class=com.example.UserApp   (Nötig)
+ * pathto=/path/to/compile/output   (Optional Standard ".")
+ * config=/path/to/config.json      (Optional Standard "config.json")
+ * log=/path/to/cclsandbox.log      (Optional Standard "cclsandbox.log")
  */
 public class Main {
 
+    private static final Logger logger = LogManager.getLogger(Main.class);
+
     public static void main(String[] args) {
         Map<String, String> params = parseArgs(args);
+
+        // --- Logger initialisieren ---
+        String logFile = params.getOrDefault("log", "cclsandbox.log");
+        // Setzt die Variable für log4j2.xml
+        ThreadContext.put("logFile", logFile);
+        // --- Logger initialisiert ---
 
         if (params.containsKey("help") || !params.containsKey("pathfrom") || !params.containsKey("main-class")) {
             printUsage();
@@ -33,122 +46,119 @@ public class Main {
         String pathFrom = params.get("pathfrom");
         String mainClassName = params.get("main-class");
         String pathFromConfig = params.getOrDefault("config", "config.json");
-        // Default output path is the current working directory
+        // Standard-Ausgabepfad ist das aktuelle Verzeichnis
         String pathFromCompileTo = params.getOrDefault("pathto", ".");
         String effectiveUserCodePath;
 
-        System.out.println("[Main] Starting Sandbox...");
-        System.out.println("[Main] Security Config: " + pathFromConfig);
-        System.out.println("[Main] User Main Class: " + mainClassName);
+        logger.info("Starte Sandbox...");
+        logger.info("Security Config: " + pathFromConfig);
+        logger.info("User Main Class: " + mainClassName);
+        logger.info("Log File: " + logFile);
 
         Path sourcePath = Paths.get(pathFrom);
         boolean isJar = pathFrom.endsWith(".jar") && Files.isRegularFile(sourcePath);
         boolean isDir = Files.isDirectory(sourcePath);
 
         try {
-if (isJar) {
-                System.out.println("[Main] Loading from JAR: " + pathFrom);
+            if (isJar) {
+                logger.info("Lade von JAR: " + pathFrom);
                 effectiveUserCodePath = pathFrom;
             } else if (isDir) {
-                // Check if the directory contains .java files
+                // Prüfen ob das Verzeichnis .java-Dateien enthält
                 boolean hasJavaFiles;
                 try (Stream<Path> stream = Files.walk(sourcePath)) {
                     hasJavaFiles = stream.anyMatch(file -> file.toString().endsWith(".java"));
                 } catch (IOException e) {
-                    System.err.println("[Main] ERROR: Could not inspect source directory: " + pathFrom);
+                    logger.error("ERROR: Konnte Quellverzeichnis nicht prüfen: " + pathFrom, e);
                     System.exit(1);
                     return;
                 }
 
                 if (hasJavaFiles) {
-                    System.out.println("[Main] Loading from source directory: " + pathFrom);
-                    System.out.println("[Main] Compiling to: " + pathFromCompileTo);
+                    logger.info("Lade von Quellverzeichnis: " + pathFrom);
+                    logger.info("Kompiliere nach: " + pathFromCompileTo);
 
                     boolean compiled = compileSourceFiles(sourcePath, Paths.get(pathFromCompileTo));
                     if (!compiled) {
-                        System.err.println("[Main] ERROR: Compilation failed. Exiting.");
+                        logger.error("ERROR: Kompilierung fehlgeschlagen Programm wird beendet");
                         System.exit(1);
                     }
-                    System.out.println("[Main] Compilation successful.");
-                    effectiveUserCodePath = pathFromCompileTo; // Use compile path
+                    logger.info("Kompilierung erfolgreich");
+                    effectiveUserCodePath = pathFromCompileTo; // Kompilierpfad nutzen
                 } else {
-                    System.out.println("[Main] Loading from pre-compiled directory: " + pathFrom);
-                    // No .java files, assume it's a directory of .class files
-                    effectiveUserCodePath = pathFrom; // Use pathFrom directly
+                    logger.info("Lade von vorkompiliertem Verzeichnis: " + pathFrom);
+                    // Keine .java-Dateien gefunden wir nehmen an es ist ein Ordner mit .class-Dateien
+                    effectiveUserCodePath = pathFrom; // pathFrom direkt nutzen
                 }
             } else {
-                System.err.println("[Main] ERROR: --pathfrom is not a valid directory or .jar file: " + pathFrom);
+                logger.error("ERROR: --pathfrom ist kein gültiges Verzeichnis oder .jar-Archiv: " + pathFrom);
                 System.exit(1);
                 return;
             }
 
-            // 1. Create the custom class loader
+            // 1. Custom ClassLoader erstellen
             BlockingClassLoader customLoader = new BlockingClassLoader(
                     ClassLoader.getSystemClassLoader(),
                     effectiveUserCodePath,
                     pathFromConfig
             );
 
-            // 2. Load and run the user's main class
-            System.out.println("\n[Main] --- Executing user code inside sandbox ---");
+            // 2. Main-Klasse des Benutzers laden und ausführen
+            logger.info("\n--- Führe Benutzercode in Sandbox aus ---");
             Class<?> userAppClass = customLoader.loadClass(mainClassName);
 
             Method mainMethod = null;
             try {
-                // First, look for a standard 'public static void main(String[] args)'
+                // Zuerst nach einer Standard 'public static void main(String[] args)' suchen
                 mainMethod = userAppClass.getMethod("main", String[].class);
             } catch (NoSuchMethodException e) {
-                // Not found, will try 'run()' method next.
+                // Nicht gefunden dann probieren wir 'run()'
             }
 
             if (mainMethod != null) {
-                // Found 'main(String[])'. Invoke it.
-                System.out.println("[Main] Found 'public static void main(String[] args)' method. Invoking...");
-                // The 'main' method is static, so the first argument to invoke is null.
-                // Pass an empty String array as the arguments.
+                // 'main(String[])' gefunden Aufruf
+                logger.info("Fand 'public static void main(String[] args)' Methode Rufe auf...");
+                // Die 'main' Methode ist static erster Parameter für invoke ist null
+                // Wir übergeben ein leeres String-Array
                 mainMethod.invoke(null, (Object) new String[0]);
             } else {
-                // 'main' not found, look for 'public void run()'
-                System.out.println("[Main] No 'main(String[])' method found. Looking for 'public void run()'...");
+                // 'main' nicht gefunden suche nach 'public void run()'
+                logger.info("Keine 'main(String[])' Methode gefunden Suche nach 'public void run()'...");
                 Method runMethod = null;
                 try {
                     runMethod = userAppClass.getMethod("run");
-                    // Found 'run()'. Instantiate the class and invoke it.
+                    // 'run()' gefunden Klasse instanziieren und aufrufen
                     Object userAppInstance = userAppClass.getDeclaredConstructor().newInstance();
                     runMethod.invoke(userAppInstance);
                 } catch (NoSuchMethodException runException) {
-                    // Neither method was found. This is the error.
-                    System.err.println("[Main] ERROR: Main class '" + mainClassName + "' does not have a 'public static void main(String[] args)' or a public 'run()' method.");
-                    throw runException; // Re-throw the exception
+                    // Keine der Methoden wurde gefunden Das ist der Fehler
+                    logger.error("ERROR: Main-Klasse '" + mainClassName + "' hat weder 'public static void main(String[] args)' noch 'public void run()' Methode", runException);
+                    throw runException; // Exception weiterwerfen
                 }
             }
 
-            System.out.println("[Main] --- User code execution finished ---\n");
 
         } catch (ClassNotFoundException e) {
-            System.err.println("[Main] ERROR: Could not find main class '" + mainClassName + "' in " + sourcePath);
-            e.printStackTrace();
+            logger.error("ERROR: Konnte Main-Klasse '" + mainClassName + "' in " + sourcePath + " nicht finden", e);
             System.exit(1);
         } catch (NoSuchMethodException e) {
-            // This will catch the re-thrown exception if neither 'main' nor 'run' is found
-            System.err.println("[Main] Execution failed: Could not find suitable entry point.");
-            e.printStackTrace();
+            // Fängt die Exception falls weder 'main' noch 'run' gefunden wurde
+            logger.error("Ausführung fehlgeschlagen: Konnte keinen passenden Einstiegspunkt finden", e);
             System.exit(1);
         } catch (Exception e) {
-            System.err.println("[Main] An error occurred while running the user application.");
-            e.printStackTrace();
+            logger.error("Ein Fehler ist während der Ausführung der Benutzeranwendung aufgetreten", e);
         }
 
-        System.out.println("[Main] Sandbox execution complete.");
+        logger.info("Sandbox-Ausführung beendet");
     }
 
     /**
-     * Compiles all .java files from a source directory to an output directory.
+     * Kompiliert alle .java-Dateien aus einem Quellverzeichnis in ein Ausgabeverzeichnis
      */
     private static boolean compileSourceFiles(Path sourceDir, Path outputDir) {
         JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
         if (compiler == null) {
-            System.err.println("[Main] ERROR: No Java compiler found. Please run this with a JDK, not just a JRE.");
+            logger.error("FEHLER: Keinen Java-Compiler gefunden Bitte mit einem JDK ausführen nicht nur JRE");
             return false;
         }
 
@@ -159,26 +169,25 @@ if (isJar) {
                     .collect(Collectors.toList());
 
             if (javaFiles.isEmpty()) {
-                System.err.println("[Main] WARNING: No .java files found in " + sourceDir);
-                return true; // Not a failure, just nothing to do.
+                logger.warn("WARNUNG: Keine .java-Dateien in " + sourceDir + " gefunden");
+                return true; // Kein Fehler nur nichts zu tun
             }
 
-            // Ensure output directory exists
+            // Sicherstellen dass das Ausgabeverzeichnis existiert
             Files.createDirectories(outputDir);
 
             String[] compilerArgs = {
                     "-d", outputDir.toString()
             };
 
-            // Combine compiler args and file list
+            // Compiler-Argumente und Dateiliste zusammenführen
             Stream<String> argsStream = Stream.concat(Stream.of(compilerArgs), javaFiles.stream());
 
             int compilationResult = compiler.run(null, null, null, argsStream.toArray(String[]::new));
             return (compilationResult == 0);
 
         } catch (IOException e) {
-            System.err.println("[Main] ERROR: Could not read source files.");
-            e.printStackTrace();
+            logger.error("ERROR: Konnte Quelldateien nicht lesen", e);
             return false;
         }
     }
@@ -187,7 +196,7 @@ if (isJar) {
     private static Map<String, String> parseArgs(String[] args) {
         Map<String, String> params = new HashMap<>();
         for (String arg : args) {
-            // Handle help argument (with or without --)
+            // Help-Argument behandeln (mit oder ohne --)
             if (arg.equals("help") || arg.equals("--help")) {
                 params.put("help", "");
                 continue;
@@ -196,7 +205,7 @@ if (isJar) {
             String[] parts = arg.split("=", 2);
             if (parts.length == 2) {
                 String key = parts[0];
-                // Remove prefix if it exists
+                // Präfix entfernen falls vorhanden
                 if (key.startsWith("--")) {
                     key = key.substring(2);
                 }
@@ -207,13 +216,16 @@ if (isJar) {
     }
 
     private static void printUsage() {
-        System.err.println("Usage: java -jar cclsandbox.jar [options]");
-        System.err.println("Options:");
-        System.err.println("  pathfrom=<path>     (Required) Path to source .java directory or a user .jar file.");
-        System.err.println("  main-class=<class>  (Required) Full class name to execute (e.g., com.example.UserApp).");
-        System.err.println("  pathto=<path>       (Optional) Directory to compile .class files into.");
-        System.err.println("                      (Defaults to current working directory: '.')");
-        System.err.println("  config=<path>       (Optional) Path to the security config.json file.");
-        System.err.println("                      (Defaults to 'config.json')");
+        // logger.info für die Nutzungsinfos verwenden geht an Konsole/Log
+        logger.info("Usage: java -jar cclsandbox.jar [options]");
+        logger.info("Options:");
+        logger.info("  --pathfrom=<path>     (Nötig) Pfad zum Quellverzeichnis (.java) oder einer .jar-Datei");
+        logger.info("  --main-class=<class>  (Nötig) Vollständiger Klassenname zur Ausführung (zB com.example.UserApp)");
+        logger.info("  --pathto=<path>       (Optional) Verzeichnis wohin .class-Dateien kompiliert werden");
+        logger.info("                      (Standard ist aktuelles Arbeitsverzeichnis: '.')");
+        logger.info("  --config=<path>       (Optional) Pfad zur config.json Sicherheitskonfigurationsdatei");
+        logger.info("                      (Standard ist 'config.json')");
+        logger.info("  --log=<path>          (Optional) Pfad zur Log-Datei");
+        logger.info("                      (Standard ist 'cclsandbox.log')");
     }
 }

@@ -1,3 +1,5 @@
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.json.JSONTokener;
@@ -19,10 +21,12 @@ import java.util.jar.JarFile;
 import java.util.stream.Stream;
 
 /**
- * A custom ClassLoader that blocks specified classes/packages and loads
- * user-provided code from a separate directory OR a JAR file.
+ * Ein eigener ClassLoader der bestimmte Klassen/Pakete blockiert und
+ * Code aus einem Verzeichnis ODER einer JAR-Datei lädt
  */
 public class BlockingClassLoader extends ClassLoader {
+
+    private static final Logger logger = LogManager.getLogger(BlockingClassLoader.class);
 
     private final Set<String> blockedClasses = new HashSet<>();
     private final Set<String> blockedPackages = new HashSet<>();
@@ -32,22 +36,21 @@ public class BlockingClassLoader extends ClassLoader {
         super(parent);
         loadConfig(configPath);
 
-        // Check if userCodePath is a directory or a JAR file
+        // Prüfen ob userCodePath ein Verzeichnis oder eine JAR ist
         Path path = Paths.get(userCodePath);
         if (Files.isDirectory(path)) {
-            System.out.println("[ClassLoader] Loading from directory: " + userCodePath);
+            logger.info("Loading from directory: " + userCodePath);
             loadUserClassesFromDir(userCodePath);
         } else if (userCodePath.endsWith(".jar") && Files.isRegularFile(path)) {
-            System.out.println("[ClassLoader] Loading from JAR: " + userCodePath);
+            logger.info("Loading from JAR: " + userCodePath);
             loadUserClassesFromJar(userCodePath);
         } else {
-            System.err.println("[ClassLoader] ERROR: userCodePath is not a valid directory or .jar file: " + userCodePath);
+            logger.error("ERROR: userCodePath is not a valid directory or .jar file: " + userCodePath);
         }
     }
 
     /**
-     * Loads security rules from the specified JSON config file.
-     * (Unchanged from original)
+     * Lädt die Sicherheitsregeln aus der JSON-Konfigdatei
      */
     private void loadConfig(String configFilePath) {
         try (InputStream is = Files.newInputStream(Paths.get(configFilePath))) {
@@ -68,16 +71,15 @@ public class BlockingClassLoader extends ClassLoader {
                 }
             }
 
-            System.out.println("[ClassLoader] Loaded " + blockedClasses.size() + " blocked classes and "
+            logger.info("Loaded " + blockedClasses.size() + " blocked classes and "
                     + blockedPackages.size() + " blocked packages from " + configFilePath);
         } catch (Exception e) {
-            System.err.println("[ClassLoader] WARNING: Could not load config file '" + configFilePath + "'. No classes will be blocked.");
+            logger.warn("WARNING: Could not load config file '" + configFilePath + "'. No classes will be blocked.", e);
         }
     }
 
     /**
-     * Scans the user code directory and loads all .class files into memory.
-     * (Renamed from loadUserClasses)
+     * Scannt das Verzeichnis und lädt alle .class-Dateien in den Speicher
      */
     private void loadUserClassesFromDir(String userCodePath) {
         Path startPath = Paths.get(userCodePath);
@@ -90,19 +92,18 @@ public class BlockingClassLoader extends ClassLoader {
                                     .replace(java.io.File.separatorChar, '.');
                             byte[] classBytes = Files.readAllBytes(classFile);
                             userClasses.put(className, classBytes);
-                            System.out.println("[ClassLoader] Discovered user class: " + className);
+                            logger.debug("Discovered user class: " + className);
                         } catch (IOException e) {
-                            System.err.println("[ClassLoader] Failed to load class file: " + classFile);
+                            logger.warn("Failed to load class file: " + classFile, e);
                         }
                     });
         } catch (IOException e) {
-            System.err.println("[ClassLoader] ERROR: Could not read user code from directory: " + userCodePath);
+            logger.error("ERROR: Could not read user code from directory: " + userCodePath, e);
         }
     }
 
     /**
-     * Scans a JAR file and loads all .class files into memory.
-     * (New method)
+     * Scannt eine JAR-Datei und lädt alle .class-Dateien in den Speicher
      */
     private void loadUserClassesFromJar(String jarPath) {
         try (JarFile jarFile = new JarFile(jarPath)) {
@@ -125,18 +126,17 @@ public class BlockingClassLoader extends ClassLoader {
 
                         byte[] classBytes = baos.toByteArray();
                         userClasses.put(className, classBytes);
-                        System.out.println("[ClassLoader] Discovered user class from JAR: " + className);
+                        logger.debug("Discovered user class from JAR: " + className);
                     }
                 }
             }
         } catch (IOException e) {
-            System.err.println("[ClassLoader] ERROR: Could not read user code from JAR: " + jarPath);
+            logger.error("ERROR: Could not read user code from JAR: " + jarPath, e);
         }
     }
 
     /**
-     * Checks if a class name is explicitly blocked or belongs to a blocked package.
-     * (Unchanged from original)
+     * Prüft ob eine Klasse blockiert ist (direkt oder per Paket)
      */
     private boolean isBlocked(String name) {
         if (blockedClasses.contains(name)) {
@@ -154,7 +154,7 @@ public class BlockingClassLoader extends ClassLoader {
     protected Class<?> findClass(String name) throws ClassNotFoundException {
         byte[] classBytes = userClasses.get(name);
         if (classBytes != null) {
-            System.out.println("[ClassLoader] Defining sandboxed class: " + name);
+            logger.debug("Defining sandboxed class: " + name);
             return defineClass(name, classBytes, 0, classBytes.length);
         }
         return super.findClass(name);
@@ -162,21 +162,22 @@ public class BlockingClassLoader extends ClassLoader {
 
     @Override
     public Class<?> loadClass(String name, boolean resolve) throws ClassNotFoundException {
-        // 1. Check blocklist first.
+        // 1. Blocklist prüfen
         if (isBlocked(name)) {
+            logger.warn("Access denied! The class '" + name + "' is blocked by security policy.");
             throw new ClassNotFoundException("Access denied! The class '" + name + "' is blocked by security policy.");
         }
 
-        // 2. Check if it's one of our loaded user classes.
+        // 2. Prüfen ob es eine unserer User-Klassen ist
         synchronized (getClassLoadingLock(name)) {
             Class<?> c = findLoadedClass(name);
             if (c == null) {
                 if (userClasses.containsKey(name)) {
-                    // It's a user class, find it (which will call defineClass)
+                    // Ist eine User-Klasse also selbst laden via findClass
                     c = findClass(name);
                 } else {
-                    // Not a user class, delegate to parent
-                    c = super.loadClass(name, false); // Pass 'false' to 'resolve' to avoid loops
+                    // Keine User-Klasse an Parent delegieren
+                    c = super.loadClass(name, false); // 'false' für resolve um Zyklen zu vermeiden
                 }
             }
 
@@ -187,3 +188,4 @@ public class BlockingClassLoader extends ClassLoader {
         }
     }
 }
+
